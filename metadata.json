@@ -1,0 +1,6 @@
+{
+  "name": "Sandy",
+  "description": "Sandy - On-device AI Assistant with Voice Chat, WhatsApp, Phone Calls, SMS, Camera Q&A, Alarms, and Notes",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
