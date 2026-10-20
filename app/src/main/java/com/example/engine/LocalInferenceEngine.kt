@@ -294,6 +294,12 @@ This runs efficiently with low memory overhead on mobile CPUs."""
                 "Why do neural networks love coffee?\n\nBecause it helps them avoid vanishing gradients and prevents early epoch crashes!"
             }
 
+            // Uploaded PDF or JPG document query
+            pLower.contains("uploaded file") || pLower.contains("my pdf") || pLower.contains("my jpg") || (pLower.contains("file") && (pLower.contains("info") || pLower.contains("tell") || pLower.contains("summarize"))) -> {
+                "Sandy here! I store and analyze your uploaded **PDF documents** and **JPG images** locally in your phone's Room database. " +
+                "Each uploaded file has its full metadata, page count/resolution, executive summary, and key insights indexed for instant retrieval. You can review them in the **Uploaded Files & Data** dialog or ask me specific questions about any file!"
+            }
+
             // Default insightful synthesis
             else -> {
                 if (params.systemPrompt.contains("Concise", ignoreCase = true)) {

@@ -8,10 +8,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.actions.PhoneActionHandler
 import com.example.actions.SandyAction
 import com.example.actions.SandyActionParser
+import com.example.data.files.FileProcessor
 import com.example.data.local.AppDatabase
 import com.example.data.local.ChatMessageEntity
 import com.example.data.local.ChatSessionEntity
 import com.example.data.local.NoteEntity
+import com.example.data.local.SandyInteractionEntity
+import com.example.data.local.UploadedFileEntity
 import com.example.data.model.InferenceParams
 import com.example.data.model.InferenceStats
 import com.example.data.model.ModelInfo
@@ -50,6 +53,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getInstance(application)
     private val chatDao = db.chatDao()
     private val noteDao = db.noteDao()
+    private val interactionDao = db.interactionDao()
+    private val uploadedFileDao = db.uploadedFileDao()
 
     val modelRepository = ModelRepository(application)
     val inferenceEngine = LocalInferenceEngine()
@@ -71,6 +76,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Sandy Notes collection
     val notes: StateFlow<List<NoteEntity>> = noteDao.getAllNotesFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Sandy Interaction & Voice Command History collection
+    val interactionHistory: StateFlow<List<SandyInteractionEntity>> = interactionDao.getAllInteractionsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Uploaded Files (PDF / JPG) and related stored data
+    val uploadedFiles: StateFlow<List<UploadedFileEntity>> = uploadedFileDao.getAllFilesFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Active pending phone action (WhatsApp, Call, SMS, YouTube, Alarm, etc.)
@@ -149,10 +162,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Seed initial Sandy interactions if empty
+        viewModelScope.launch {
+            val existing = interactionDao.getAllInteractionsFlow().firstOrNull() ?: emptyList()
+            if (existing.isEmpty()) {
+                val now = System.currentTimeMillis()
+                interactionDao.insertInteraction(
+                    SandyInteractionEntity(
+                        command = "Sandy, what can you do?",
+                        actionType = "VOICE",
+                        actionSummary = "Overview of phone calls, WhatsApp, alarms, notes, YouTube & camera Q&A",
+                        isVoice = true,
+                        status = "COMPLETED",
+                        timestamp = now - 3600000L
+                    )
+                )
+                interactionDao.insertInteraction(
+                    SandyInteractionEntity(
+                        command = "Sandy, set an alarm for 7:00 AM",
+                        actionType = "ALARM",
+                        actionSummary = "Alarm set for 7:00 AM",
+                        isVoice = true,
+                        status = "COMPLETED",
+                        timestamp = now - 1800000L
+                    )
+                )
+                interactionDao.insertInteraction(
+                    SandyInteractionEntity(
+                        command = "Sandy, note buy groceries and fresh milk",
+                        actionType = "NOTE",
+                        actionSummary = "Saved note: \"buy groceries and fresh milk\"",
+                        isVoice = false,
+                        status = "COMPLETED",
+                        timestamp = now - 600000L
+                    )
+                )
+            }
+        }
+
+        // Seed initial sample PDF & JPG files in Room database if empty
+        viewModelScope.launch {
+            val existingFiles = uploadedFileDao.getAllFiles()
+            if (existingFiles.isEmpty()) {
+                uploadedFileDao.insertFile(FileProcessor.createSamplePdf())
+                uploadedFileDao.insertFile(FileProcessor.createSampleJpg())
+            }
+        }
+
         // Voice speech callback
         voiceManager.setOnSpeechResult { transcript ->
             if (transcript.isNotBlank()) {
-                sendUserPrompt(transcript)
+                sendUserPrompt(transcript, isVoiceInput = true)
             }
         }
     }
@@ -251,14 +311,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sendUserPrompt("[Visual Analysis from Camera] $question")
     }
 
-    fun dismissPendingAction() {
-        _pendingAction.value = null
+    // Sandy Interaction History Operations
+    fun logInteraction(command: String, actionType: String, actionSummary: String, isVoice: Boolean) {
+        viewModelScope.launch {
+            interactionDao.insertInteraction(
+                SandyInteractionEntity(
+                    command = command,
+                    actionType = actionType,
+                    actionSummary = actionSummary,
+                    isVoice = isVoice
+                )
+            )
+        }
     }
 
-    fun sendUserPrompt(promptText: String) {
+    fun deleteInteraction(id: String) {
+        viewModelScope.launch {
+            interactionDao.deleteInteractionById(id)
+        }
+    }
+
+    fun clearAllInteractions() {
+        viewModelScope.launch {
+            interactionDao.clearAllInteractions()
+        }
+    }
+
+    fun sendUserPrompt(promptText: String, isVoiceInput: Boolean = false) {
         val trimmed = promptText.trim()
         if (trimmed.isBlank()) return
 
+        val isVoice = isVoiceInput || _currentScreen.value == AppScreen.VOICE_CHAT
         val sessionId = _activeSessionId.value ?: return
 
         // 1. Detect device actions (WhatsApp, Call, SMS, YouTube, Alarm, Note, Camera)
@@ -314,6 +397,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     is SandyAction.CameraQuestion -> {
                         "Opening camera for Sandy visual analysis. Point your camera at what you want me to look at!"
                     }
+                    is SandyAction.FileQuery -> {
+                        generateFileInfoResponse(detectedAction.query, detectedAction.targetFileType)
+                    }
+                    is SandyAction.WhatsAppStatus -> {
+                        "Sandy here! I've prepared your WhatsApp status: *\"${detectedAction.statusText}\"*. Tap below to share it directly to your WhatsApp status."
+                    }
+                    is SandyAction.InstagramMessage -> {
+                        val recipientClean = detectedAction.recipient.trim().removePrefix("@")
+                        "Sandy here! Ready to send a personal message to **@$recipientClean** on Instagram: *\"${detectedAction.message}\"*. Tap below to open Instagram Direct."
+                    }
+                    is SandyAction.InstagramPost -> {
+                        "Sandy here! Ready to post on Instagram with caption: *\"${detectedAction.caption}\"*. Tap below to open Instagram and share your post."
+                    }
                 }
 
                 // Simulate token streaming for Sandy confirmation
@@ -328,6 +424,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _streamingMessage.value = null
                 val finalStats = _currentStats.value.copy(isGenerating = false, tokenCount = tokens.size)
                 _currentStats.value = finalStats
+
+                val (actionType, actionSummary) = when (detectedAction) {
+                    is SandyAction.WhatsApp -> Pair("WHATSAPP", "WhatsApp to ${detectedAction.recipient ?: "contact"}: \"${detectedAction.message}\"")
+                    is SandyAction.Call -> Pair("CALL", "Call ${detectedAction.contactName ?: detectedAction.phoneNumber}")
+                    is SandyAction.Sms -> Pair("SMS", "SMS to ${detectedAction.recipient}: \"${detectedAction.message}\"")
+                    is SandyAction.YouTube -> Pair("YOUTUBE", "Play \"${detectedAction.query}\" on YouTube")
+                    is SandyAction.Alarm -> Pair("ALARM", "Alarm set for ${detectedAction.hour}:${String.format("%02d", detectedAction.minute)}")
+                    is SandyAction.Timer -> Pair("TIMER", "Timer for ${detectedAction.seconds / 60}m")
+                    is SandyAction.Note -> Pair("NOTE", "Saved note: \"${detectedAction.content}\"")
+                    is SandyAction.CameraQuestion -> Pair("CAMERA_QA", "Camera Q&A: ${detectedAction.question}")
+                    is SandyAction.FileQuery -> Pair("FILE_INFO", "Queried file: ${detectedAction.query.take(35)}")
+                    is SandyAction.WhatsAppStatus -> Pair("WHATSAPP_STATUS", "Status: \"${detectedAction.statusText}\"")
+                    is SandyAction.InstagramMessage -> Pair("INSTAGRAM_DM", "DM to @${detectedAction.recipient.removePrefix("@")}: \"${detectedAction.message}\"")
+                    is SandyAction.InstagramPost -> Pair("INSTAGRAM_POST", "Post: \"${detectedAction.caption}\"")
+                }
+                logInteraction(trimmed, actionType, actionSummary, isVoice)
 
                 val assistantMsg = ChatMessageEntity(
                     sessionId = sessionId,
@@ -381,6 +493,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             tokenCount = event.stats.tokenCount
                         )
                         chatDao.insertMessage(assistantMsg)
+
+                        if (detectedAction == null) {
+                            val actionType = if (trimmed.contains("[Visual Analysis from Camera]")) {
+                                "CAMERA_QA"
+                            } else if (isVoice) {
+                                "VOICE"
+                            } else {
+                                "CONVERSATION"
+                            }
+                            val summary = if (event.fullText.length > 80) event.fullText.take(80) + "..." else event.fullText
+                            logInteraction(trimmed, actionType, summary, isVoice)
+                        }
 
                         if (_currentScreen.value == AppScreen.VOICE_CHAT || voiceManager.autoSpeak.value) {
                             voiceManager.speak(event.fullText) {
@@ -440,6 +564,129 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             modelRepository.downloadModel(modelId)
         }
+    }
+
+    private suspend fun generateFileInfoResponse(query: String, targetFileType: String?): String {
+        val files = uploadedFileDao.getAllFiles()
+        if (files.isEmpty()) {
+            return "📂 **Sandy File Assistant**:\n\n" +
+                    "No files have been uploaded yet. Tap the **Upload File (PDF/JPG)** button or select **+ Sample Invoice/Receipt** to store and analyze documents in the local Room database!"
+        }
+
+        val target = if (targetFileType != null) {
+            files.firstOrNull { it.fileType.equals(targetFileType, ignoreCase = true) }
+        } else {
+            val queryLower = query.lowercase()
+            files.firstOrNull { file ->
+                val nameLower = file.fileName.lowercase()
+                val base = nameLower.substringBeforeLast(".")
+                queryLower.contains(nameLower) || queryLower.contains(base) ||
+                        (queryLower.contains("invoice") && nameLower.contains("invoice")) ||
+                        (queryLower.contains("receipt") && nameLower.contains("receipt"))
+            } ?: files.firstOrNull()
+        }
+
+        if (target == null) {
+            return "Sandy here! I could not locate a matching file. Currently you have **${files.size} document(s)** stored in the local Room database: " +
+                    files.joinToString(", ") { "${it.fileName} (${it.fileType})" }
+        }
+
+        val typeEmoji = if (target.fileType == "PDF") "📄" else "🖼️"
+        val dimensionDetail = if (target.fileType == "PDF") "${target.pageCount} page(s), ${target.dimensions}" else "Resolution: ${target.dimensions ?: "HD"}"
+
+        return "$typeEmoji **Sandy File Information**: **${target.fileName}**\n\n" +
+                "• **Format & Size**: ${target.fileType} • ${target.fileSizeFormatted}\n" +
+                "• **Pages / Image Resolution**: $dimensionDetail\n" +
+                "• **Database Record**: Room Table `uploaded_files`, Status: **${target.analysisStatus}**\n\n" +
+                "📋 **Document Summary**:\n${target.summary}\n\n" +
+                "💡 **Stored Key Insights**:\n${target.keyInsights}\n\n" +
+                "💬 *All related data was extracted and saved securely on your device. You can ask me to extract specific figures, summarize sections, or compare files anytime!*"
+    }
+
+    fun uploadFile(uri: Uri, explicitType: String? = null) {
+        viewModelScope.launch {
+            try {
+                val entity = FileProcessor.processAndStoreFile(getApplication(), uri, explicitType)
+                uploadedFileDao.insertFile(entity)
+
+                val summaryMsg = "📄 **New File Uploaded & Stored**: **${entity.fileName}** (${entity.fileType}, ${entity.fileSizeFormatted})\n\n" +
+                        "• **Executive Summary**: ${entity.summary}\n" +
+                        "• **Stored Details**: ${if (entity.fileType == "PDF") "${entity.pageCount} Pages (${entity.dimensions})" else "Resolution: " + (entity.dimensions ?: "HD")}\n\n" +
+                        "💾 *All related metadata and insights have been stored in the local Room database.* You can ask: **\"Tell me about ${entity.fileName}\"** or **\"Summarize this ${entity.fileType}\"** anytime!"
+
+                val sessionId = _activeSessionId.value
+                if (sessionId != null) {
+                    val msg = ChatMessageEntity(
+                        sessionId = sessionId,
+                        role = "assistant",
+                        content = summaryMsg,
+                        tokensPerSecond = 35f,
+                        generationTimeMs = 120,
+                        tokenCount = 50
+                    )
+                    chatDao.insertMessage(msg)
+                }
+
+                logInteraction("Uploaded ${entity.fileName}", "FILE_UPLOAD", "Stored ${entity.fileType}: ${entity.fileName}", isVoice = false)
+            } catch (e: Exception) {
+                val sessionId = _activeSessionId.value
+                if (sessionId != null) {
+                    chatDao.insertMessage(
+                        ChatMessageEntity(
+                            sessionId = sessionId,
+                            role = "assistant",
+                            content = "Could not process file: ${e.localizedMessage ?: "Unknown error"}",
+                            tokensPerSecond = 20f,
+                            generationTimeMs = 50,
+                            tokenCount = 10
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun uploadSampleFile(sampleType: String) {
+        viewModelScope.launch {
+            val entity = if (sampleType == "JPG_RECEIPT") FileProcessor.createSampleJpg() else FileProcessor.createSamplePdf()
+            uploadedFileDao.insertFile(entity)
+
+            val summaryMsg = "📄 **Sample ${entity.fileType} Document Loaded**: **${entity.fileName}** (${entity.fileSizeFormatted})\n\n" +
+                    "• **Summary**: ${entity.summary}\n" +
+                    "• **Key Insights**:\n${entity.keyInsights}\n\n" +
+                    "💾 *Saved to local Room database.* You can now ask: **\"Tell me about the ${entity.fileType} file\"**!"
+
+            val sessionId = _activeSessionId.value
+            if (sessionId != null) {
+                chatDao.insertMessage(
+                    ChatMessageEntity(
+                        sessionId = sessionId,
+                        role = "assistant",
+                        content = summaryMsg,
+                        tokensPerSecond = 35f,
+                        generationTimeMs = 100,
+                        tokenCount = 45
+                    )
+                )
+            }
+            logInteraction("Loaded sample ${entity.fileName}", "FILE_UPLOAD", "Stored sample ${entity.fileType}: ${entity.fileName}", isVoice = false)
+        }
+    }
+
+    fun deleteUploadedFile(id: Long) {
+        viewModelScope.launch {
+            uploadedFileDao.deleteFileById(id)
+        }
+    }
+
+    fun clearAllUploadedFiles() {
+        viewModelScope.launch {
+            uploadedFileDao.clearAllFiles()
+        }
+    }
+
+    fun askAboutUploadedFile(file: UploadedFileEntity) {
+        sendUserPrompt("Tell me about the file ${file.fileName}", isVoiceInput = false)
     }
 
     override fun onCleared() {

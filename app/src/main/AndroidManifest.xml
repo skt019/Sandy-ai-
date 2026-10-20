@@ -25,6 +25,7 @@
         </intent>
         <package android:name="com.whatsapp" />
         <package android:name="com.google.android.youtube" />
+        <package android:name="com.instagram.android" />
     </queries>
 
     <application

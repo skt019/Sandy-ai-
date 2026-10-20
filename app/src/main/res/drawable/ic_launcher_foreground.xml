@@ -1,53 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Center AI Core Chip Box -->
-    <path
-        android:fillColor="#1E293B"
-        android:strokeColor="#38BDF8"
-        android:strokeWidth="2.5"
-        android:strokeLineJoin="round"
-        android:pathData="M39,36 h30 a5,5 0 0 1 5,5 v30 a5,5 0 0 1 -5,5 h-30 a5,5 0 0 1 -5,-5 v-30 a5,5 0 0 1 5,-5 z" />
-
-    <!-- Chip Pins -->
-    <path
-        android:strokeColor="#38BDF8"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:pathData="M44,36 V30 M54,36 V28 M64,36 V30 M44,76 V82 M54,76 V84 M64,76 V82 M34,44 H28 M34,54 H26 M34,64 H28 M74,44 H80 M74,54 H82 M74,64 H80" />
-
-    <!-- Central Neural / Voice Waveform bars inside the chip -->
-    <path
-        android:strokeColor="#818CF8"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"
-        android:pathData="M42,56 V52" />
-    <path
-        android:strokeColor="#38BDF8"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"
-        android:pathData="M47,61 V47" />
-    <path
-        android:strokeColor="#C084FC"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:pathData="M54,65 V43" />
-    <path
-        android:strokeColor="#38BDF8"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"
-        android:pathData="M61,61 V47" />
-    <path
-        android:strokeColor="#818CF8"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"
-        android:pathData="M66,56 V52" />
-
-    <!-- AI Sparkle / Star at top right -->
-    <path
-        android:fillColor="#38BDF8"
-        android:pathData="M78,32 Q78,36 82,36 Q78,36 78,40 Q78,36 74,36 Q78,36 78,32 Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="76dp"
+        android:height="76dp"
+        android:drawable="@drawable/sandy_avatar"
+        android:gravity="center" />
+</layer-list>

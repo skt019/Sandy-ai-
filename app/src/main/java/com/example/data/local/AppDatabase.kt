@@ -6,13 +6,21 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [ChatSessionEntity::class, ChatMessageEntity::class, NoteEntity::class],
-    version = 2,
+    entities = [
+        ChatSessionEntity::class,
+        ChatMessageEntity::class,
+        NoteEntity::class,
+        SandyInteractionEntity::class,
+        UploadedFileEntity::class
+    ],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
     abstract fun noteDao(): NoteDao
+    abstract fun interactionDao(): SandyInteractionDao
+    abstract fun uploadedFileDao(): UploadedFileDao
 
     companion object {
         @Volatile

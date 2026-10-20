@@ -29,11 +29,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
+import com.example.ui.components.SandyFilesDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +68,7 @@ import androidx.core.content.ContextCompat
 import com.example.ui.components.AudioWaveformBars
 import com.example.ui.components.AudioWaveformVisualizer
 import com.example.ui.components.RealtimeAudioWaveform
+import com.example.ui.components.SandyHistoryDialog
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.ElectricViolet
 import com.example.ui.theme.MintEmerald
@@ -89,6 +93,11 @@ fun VoiceChatScreen(
     val messages by viewModel.messages.collectAsState()
     val streamingMessage by viewModel.streamingMessage.collectAsState()
     val currentStats by viewModel.currentStats.collectAsState()
+    val interactionHistory by viewModel.interactionHistory.collectAsState()
+    val uploadedFiles by viewModel.uploadedFiles.collectAsState()
+
+    var showHistoryDialog by remember { mutableStateOf(false) }
+    var showFilesDialog by remember { mutableStateOf(false) }
 
     var hasAudioPermission by remember {
         mutableStateOf(
@@ -152,6 +161,30 @@ fun VoiceChatScreen(
                     }
                 },
                 actions = {
+                    // Uploaded Files Button
+                    IconButton(
+                        onClick = { showFilesDialog = true },
+                        modifier = Modifier.testTag("voice_screen_files_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = "Uploaded Files & Documents",
+                            tint = if (uploadedFiles.isNotEmpty()) NeonCyan else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Interaction History Button
+                    IconButton(
+                        onClick = { showHistoryDialog = true },
+                        modifier = Modifier.testTag("voice_screen_history_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "Interaction History",
+                            tint = NeonCyan
+                        )
+                    }
+
                     // Continuous Voice Mode Switch
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -414,5 +447,37 @@ fun VoiceChatScreen(
                 }
             }
         }
+    }
+
+    // Sandy Interaction History Dialog in Voice Mode
+    if (showHistoryDialog) {
+        SandyHistoryDialog(
+            interactions = interactionHistory,
+            onRerun = { interaction ->
+                showHistoryDialog = false
+                viewModel.sendUserPrompt(interaction.command, isVoiceInput = true)
+            },
+            onDelete = { id -> viewModel.deleteInteraction(id) },
+            onClearAll = { viewModel.clearAllInteractions() },
+            onDismiss = { showHistoryDialog = false }
+        )
+    }
+
+    // Sandy Uploaded Files Dialog in Voice Mode
+    if (showFilesDialog) {
+        SandyFilesDialog(
+            files = uploadedFiles,
+            onAskAboutFile = { file ->
+                showFilesDialog = false
+                viewModel.sendUserPrompt("Tell me about the file ${file.fileName}", isVoiceInput = true)
+            },
+            onDeleteFile = { id -> viewModel.deleteUploadedFile(id) },
+            onClearAll = { viewModel.clearAllUploadedFiles() },
+            onPickPdf = { /* File picking handled in Chat screen */ },
+            onPickJpg = { /* File picking handled in Chat screen */ },
+            onLoadSamplePdf = { viewModel.uploadSampleFile("PDF_INVOICE") },
+            onLoadSampleJpg = { viewModel.uploadSampleFile("JPG_RECEIPT") },
+            onDismiss = { showFilesDialog = false }
+        )
     }
 }

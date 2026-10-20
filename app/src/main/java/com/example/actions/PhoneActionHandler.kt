@@ -19,6 +19,10 @@ object PhoneActionHandler {
                 is SandyAction.Timer -> setTimer(context, action.seconds, action.label)
                 is SandyAction.Note -> "Note saved to Sandy's memory"
                 is SandyAction.CameraQuestion -> "Opening camera for visual analysis"
+                is SandyAction.FileQuery -> "Retrieved document details"
+                is SandyAction.WhatsAppStatus -> postWhatsAppStatus(context, action.statusText)
+                is SandyAction.InstagramMessage -> sendInstagramMessage(context, action.recipient, action.message)
+                is SandyAction.InstagramPost -> postOnInstagram(context, action.caption)
             }
         } catch (e: Exception) {
             "Action could not be completed: ${e.localizedMessage}"
@@ -124,6 +128,68 @@ object PhoneActionHandler {
             "Timer set for ${seconds / 60} minutes"
         } catch (e: Exception) {
             "Unable to set timer: ${e.localizedMessage}"
+        }
+    }
+
+    fun postWhatsAppStatus(context: Context, statusText: String): String {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, statusText)
+            setPackage("com.whatsapp")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        return try {
+            context.startActivity(intent)
+            "Opening WhatsApp to post your status: \"$statusText\""
+        } catch (e: Exception) {
+            val fallback = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, statusText)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(Intent.createChooser(fallback, "Post Status").apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            })
+            "Opening share options for your WhatsApp status..."
+        }
+    }
+
+    fun sendInstagramMessage(context: Context, recipient: String, message: String): String {
+        val cleanUser = recipient.trim().replace("@", "")
+        // Deep link into Instagram Direct DM conversation
+        val directUri = Uri.parse("https://ig.me/m/$cleanUser")
+        val intent = Intent(Intent.ACTION_VIEW, directUri).apply {
+            setPackage("com.instagram.android")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        return try {
+            context.startActivity(intent)
+            "Opening Instagram to send personal message to @$cleanUser: \"$message\""
+        } catch (e: Exception) {
+            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/direct/inbox/")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(webIntent)
+            "Opening Instagram Direct in browser..."
+        }
+    }
+
+    fun postOnInstagram(context: Context, caption: String): String {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, caption)
+            setPackage("com.instagram.android")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        return try {
+            context.startActivity(intent)
+            "Opening Instagram to share post: \"$caption\""
+        } catch (e: Exception) {
+            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(webIntent)
+            "Opening Instagram web to share your update..."
         }
     }
 }

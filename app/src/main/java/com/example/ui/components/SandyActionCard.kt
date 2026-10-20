@@ -19,10 +19,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -129,6 +132,43 @@ fun SandyActionCard(
                 action.question,
                 "Open Camera",
                 NeonCyan
+            )
+        }
+        is SandyAction.FileQuery -> {
+            Tuple5(
+                Icons.Default.Description,
+                "Uploaded File Information",
+                action.query,
+                "View Document Data",
+                NeonCyan
+            )
+        }
+        is SandyAction.WhatsAppStatus -> {
+            Tuple5(
+                Icons.Default.Chat,
+                "WhatsApp Status Update",
+                "Status: \"${action.statusText}\"",
+                "Post to WhatsApp Status",
+                MintEmerald
+            )
+        }
+        is SandyAction.InstagramMessage -> {
+            val user = action.recipient.trim().removePrefix("@")
+            Tuple5(
+                Icons.Default.Send,
+                "Instagram Direct Message",
+                "To: @$user\n\"${action.message}\"",
+                "Open Instagram Chat",
+                Color(0xFFE1306C)
+            )
+        }
+        is SandyAction.InstagramPost -> {
+            Tuple5(
+                Icons.Default.Share,
+                "Instagram Post",
+                "Caption: \"${action.caption}\"",
+                "Share on Instagram",
+                Color(0xFFE1306C)
             )
         }
     }

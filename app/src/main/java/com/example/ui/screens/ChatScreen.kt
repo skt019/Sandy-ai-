@@ -95,11 +95,20 @@ import com.example.actions.SandyAction
 import com.example.data.local.ChatMessageEntity
 import com.example.data.model.InferenceStats
 import com.example.data.model.ModelStatus
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PictureAsPdf
+import com.example.ui.components.AboutDialog
 import com.example.ui.components.CameraAssistantDialog
 import com.example.ui.components.GeminiSparkleStar
 import com.example.ui.components.MarkdownText
 import com.example.ui.components.RealtimeSpeechRecordingBar
 import com.example.ui.components.SandyActionCard
+import com.example.ui.components.SandyFilesDialog
+import com.example.ui.components.SandyHistoryDialog
 import com.example.ui.components.SandyNotesDialog
 import com.example.ui.components.TelemetryBar
 import com.example.ui.theme.CyberBackground
@@ -131,6 +140,8 @@ fun ChatScreen(
     val partialTranscript by viewModel.voiceManager.partialTranscript.collectAsState()
     val pendingAction by viewModel.pendingAction.collectAsState()
     val notes by viewModel.notes.collectAsState()
+    val interactionHistory by viewModel.interactionHistory.collectAsState()
+    val uploadedFiles by viewModel.uploadedFiles.collectAsState()
     val capturedPhoto by viewModel.capturedPhoto.collectAsState()
 
     val listState = rememberLazyListState()
@@ -139,6 +150,9 @@ fun ChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showModelDropdown by remember { mutableStateOf(false) }
     var showNotesDialog by remember { mutableStateOf(false) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
+    var showFilesDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
     var showCameraDialog by remember { mutableStateOf(false) }
     var tempCameraBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
@@ -207,6 +221,34 @@ fun ChatScreen(
             }
             viewModel.importCustomGgufFile(uri, fileName)
             Toast.makeText(context, "Sandy loaded $fileName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Document & Image upload launchers for storing related data in Room
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.uploadFile(uri, "PDF")
+            Toast.makeText(context, "PDF uploaded & data stored in Room", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val jpgPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.uploadFile(uri, "JPG")
+            Toast.makeText(context, "JPG uploaded & data stored in Room", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val anyFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.uploadFile(uri)
+            Toast.makeText(context, "File uploaded & analyzed by Sandy", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -316,6 +358,30 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // History Button
+                    IconButton(
+                        onClick = { showHistoryDialog = true },
+                        modifier = Modifier.testTag("sandy_history_top_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "Interaction History",
+                            tint = NeonCyan
+                        )
+                    }
+
+                    // Uploaded Files & Data Button
+                    IconButton(
+                        onClick = { showFilesDialog = true },
+                        modifier = Modifier.testTag("sandy_files_top_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = "Uploaded Files & Documents",
+                            tint = if (uploadedFiles.isNotEmpty()) NeonCyan else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     // Notes Button
                     IconButton(
                         onClick = { showNotesDialog = true },
@@ -365,6 +431,22 @@ fun ChatScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Uploaded Files & Data (${uploadedFiles.size})") },
+                            leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, tint = NeonCyan) },
+                            onClick = {
+                                showFilesDialog = true
+                                showMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Command & Action History (${interactionHistory.size})") },
+                            leadingIcon = { Icon(Icons.Default.History, contentDescription = null, tint = NeonCyan) },
+                            onClick = {
+                                showHistoryDialog = true
+                                showMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Sandy Notes (${notes.size})") },
                             leadingIcon = { Icon(Icons.Default.EditNote, contentDescription = null) },
                             onClick = {
@@ -385,6 +467,14 @@ fun ChatScreen(
                             leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
                             onClick = {
                                 viewModel.navigateTo(AppScreen.SETTINGS)
+                                showMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("About") },
+                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF10B981)) },
+                            onClick = {
+                                showAboutDialog = true
                                 showMenu = false
                             }
                         )
@@ -457,6 +547,8 @@ fun ChatScreen(
                                     cameraPreviewLauncher.launch(null)
                                 }
                             },
+                            onHistoryClick = { showHistoryDialog = true },
+                            onFilesClick = { showFilesDialog = true },
                             onQuickPrompt = { prompt ->
                                 viewModel.sendUserPrompt(prompt)
                             }
@@ -551,6 +643,23 @@ fun ChatScreen(
                 onPickGgufFile = {
                     filePickerLauncher.launch(arrayOf("*/*"))
                 },
+                onUploadPdf = {
+                    pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                },
+                onUploadJpg = {
+                    jpgPickerLauncher.launch(arrayOf("image/jpeg", "image/jpg", "image/png"))
+                },
+                onLoadSamplePdf = {
+                    viewModel.uploadSampleFile("PDF_INVOICE")
+                    Toast.makeText(context, "Loaded sample PDF into database", Toast.LENGTH_SHORT).show()
+                },
+                onLoadSampleJpg = {
+                    viewModel.uploadSampleFile("JPG_RECEIPT")
+                    Toast.makeText(context, "Loaded sample JPG into database", Toast.LENGTH_SHORT).show()
+                },
+                onOpenFilesDialog = {
+                    showFilesDialog = true
+                },
                 onOpenLiveVoice = {
                     viewModel.navigateTo(AppScreen.VOICE_CHAT)
                 }
@@ -579,6 +688,20 @@ fun ChatScreen(
         )
     }
 
+    // Sandy Interaction History Dialog (Room database log review)
+    if (showHistoryDialog) {
+        SandyHistoryDialog(
+            interactions = interactionHistory,
+            onRerun = { interaction ->
+                showHistoryDialog = false
+                viewModel.sendUserPrompt(interaction.command, isVoiceInput = interaction.isVoice)
+            },
+            onDelete = { id -> viewModel.deleteInteraction(id) },
+            onClearAll = { viewModel.clearAllInteractions() },
+            onDismiss = { showHistoryDialog = false }
+        )
+    }
+
     // Sandy Notes Dialog
     if (showNotesDialog) {
         SandyNotesDialog(
@@ -586,6 +709,31 @@ fun ChatScreen(
             onAddNote = { viewModel.addNote(it) },
             onDeleteNote = { viewModel.deleteNote(it) },
             onDismiss = { showNotesDialog = false }
+        )
+    }
+
+    // Sandy Uploaded Files Dialog (PDF / JPG Room database data)
+    if (showFilesDialog) {
+        SandyFilesDialog(
+            files = uploadedFiles,
+            onAskAboutFile = { file ->
+                showFilesDialog = false
+                viewModel.askAboutUploadedFile(file)
+            },
+            onDeleteFile = { id -> viewModel.deleteUploadedFile(id) },
+            onClearAll = { viewModel.clearAllUploadedFiles() },
+            onPickPdf = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+            onPickJpg = { jpgPickerLauncher.launch(arrayOf("image/jpeg", "image/jpg", "image/png")) },
+            onLoadSamplePdf = { viewModel.uploadSampleFile("PDF_INVOICE") },
+            onLoadSampleJpg = { viewModel.uploadSampleFile("JPG_RECEIPT") },
+            onDismiss = { showFilesDialog = false }
+        )
+    }
+
+    // Sandy About Dialog (Santosh Thakur & Nasir Raza, skt019@gmail.com)
+    if (showAboutDialog) {
+        AboutDialog(
+            onDismiss = { showAboutDialog = false }
         )
     }
 }
@@ -599,6 +747,8 @@ private fun SandyHeroEmptyView(
     quantization: String,
     onVoiceClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onHistoryClick: () -> Unit,
+    onFilesClick: () -> Unit,
     onQuickPrompt: (String) -> Unit
 ) {
     Column(
@@ -631,18 +781,18 @@ private fun SandyHeroEmptyView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Mode Pills: Chat / Hands-Free Voice
+        // Mode Pills: Chat / Hands-Free Voice / Camera / Files / History
         Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color(0xFF1E293B))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Text("Chat", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Chat", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
 
             Box(
@@ -651,12 +801,12 @@ private fun SandyHeroEmptyView(
                     .background(Color(0xFF0F172A))
                     .border(1.dp, Color(0xFF334155), RoundedCornerShape(20.dp))
                     .clickable(onClick = onVoiceClick)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = ElectricViolet, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Hands-Free Voice", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = ElectricViolet, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Voice", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -666,12 +816,42 @@ private fun SandyHeroEmptyView(
                     .background(Color(0xFF0F172A))
                     .border(1.dp, Color(0xFF334155), RoundedCornerShape(20.dp))
                     .clickable(onClick = onCameraClick)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Camera Q&A", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Camera", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF0F172A))
+                    .border(1.dp, Color(0xFF334155), RoundedCornerShape(20.dp))
+                    .clickable(onClick = onFilesClick)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Files", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF0F172A))
+                    .border(1.dp, Color(0xFF334155), RoundedCornerShape(20.dp))
+                    .clickable(onClick = onHistoryClick)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.History, contentDescription = null, tint = MintEmerald, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("History", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -680,6 +860,7 @@ private fun SandyHeroEmptyView(
 
         // Sandy Quick Phone Actions
         val actionPrompts = listOf(
+            Triple(Icons.Default.Description, "Sandy, tell me about the uploaded file", "Document Info"),
             Triple(Icons.Default.Phone, "Sandy, call 9876543210", "Phone Call"),
             Triple(Icons.Default.Alarm, "Sandy, set alarm for 7:30 AM", "Alarm Clock"),
             Triple(Icons.Default.EditNote, "Sandy, note this down: Buy groceries and bread", "Voice Note"),
@@ -735,8 +916,15 @@ private fun ChatInputPillContainer(
     onSendSpeech: () -> Unit,
     onCameraClick: () -> Unit,
     onPickGgufFile: () -> Unit,
+    onUploadPdf: () -> Unit,
+    onUploadJpg: () -> Unit,
+    onLoadSamplePdf: () -> Unit,
+    onLoadSampleJpg: () -> Unit,
+    onOpenFilesDialog: () -> Unit,
     onOpenLiveVoice: () -> Unit
 ) {
+    var showAttachMenu by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -762,19 +950,75 @@ private fun ChatInputPillContainer(
                     .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // "+" Button to import .gguf file from device
-                IconButton(
-                    onClick = onPickGgufFile,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .testTag("import_gguf_pill_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Import GGUF model file",
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(20.dp)
-                    )
+                // Attach / Upload File Button with Dropdown Menu
+                Box {
+                    IconButton(
+                        onClick = { showAttachMenu = true },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("upload_file_pill_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AttachFile,
+                            contentDescription = "Upload PDF or JPG file",
+                            tint = NeonCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showAttachMenu,
+                        onDismissRequest = { showAttachMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Upload PDF Document") },
+                            leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = Color(0xFFE11D48)) },
+                            onClick = {
+                                showAttachMenu = false
+                                onUploadPdf()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Upload JPG Image") },
+                            leadingIcon = { Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF2563EB)) },
+                            onClick = {
+                                showAttachMenu = false
+                                onUploadJpg()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("+ Sample Invoice (PDF)") },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, tint = NeonCyan) },
+                            onClick = {
+                                showAttachMenu = false
+                                onLoadSamplePdf()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("+ Sample Receipt (JPG)") },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, tint = NeonPurple) },
+                            onClick = {
+                                showAttachMenu = false
+                                onLoadSampleJpg()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("View Stored Files") },
+                            leadingIcon = { Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF10B981)) },
+                            onClick = {
+                                showAttachMenu = false
+                                onOpenFilesDialog()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Import GGUF Model") },
+                            leadingIcon = { Icon(Icons.Default.Storage, contentDescription = null, tint = Color(0xFF94A3B8)) },
+                            onClick = {
+                                showAttachMenu = false
+                                onPickGgufFile()
+                            }
+                        )
+                    }
                 }
 
                 // Camera Button for visual Q&A

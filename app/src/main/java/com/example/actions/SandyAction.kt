@@ -39,4 +39,22 @@ sealed class SandyAction {
     data class CameraQuestion(
         val question: String = "Describe what you see"
     ) : SandyAction()
+
+    data class FileQuery(
+        val query: String,
+        val targetFileType: String? = null
+    ) : SandyAction()
+
+    data class WhatsAppStatus(
+        val statusText: String
+    ) : SandyAction()
+
+    data class InstagramMessage(
+        val recipient: String,
+        val message: String
+    ) : SandyAction()
+
+    data class InstagramPost(
+        val caption: String
+    ) : SandyAction()
 }
